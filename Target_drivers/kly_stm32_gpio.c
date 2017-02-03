@@ -11,7 +11,68 @@
 
 #include "kly_error.h"
 #include "kly_gpio.h"
+#include "stm32f103xe.h"
 
+
+#define GPIO_PORT_SIZE 16
+
+
+
+static GPIO_TypeDef * const STM32_GPIO[] =
+{
+    GPIOA,
+    GPIOB,
+    GPIOC,
+    GPIOD,
+    GPIOE,
+    GPIOF,
+    GPIOG
+};
+
+
+
+/**
+ * Get the configuration as defined in the STM32 reference manuals.
+ * @param config
+ * @param pull
+ * @return
+ */
+static uint32_t get_config(kly_gpio_config_e config, kly_gpio_pull_e pull)
+{
+    uint32_t config_rv;
+
+    config_rv = 4; // Reset value default.
+    switch(config)
+    {
+        case KLY_GPIO_CONFIG_INPUT:
+            if(pull == KLY_GPIO_PULL_NONE)
+            {
+                config_rv = 4;
+            }
+            else
+            {
+                config_rv = 8;
+            }
+            break;
+        case KLY_GPIO_CONFIG_OUTPUT_PUSH_PULL:
+            config_rv = 3;
+            break;
+        case KLY_GPIO_CONFIG_OUTPUT_OPEN_DRAIN:
+            config_rv = 7;
+            break;
+        case KLY_GPIO_CONFIG_ANALOG:
+            config_rv = 0;
+            break;
+        case KLY_GPIO_CONFIG_ALT_PUSH_PULL:
+            config_rv = 0xB;
+            break;
+        case KLY_GPIO_CONFIG_ALT_OPEN_DRAIN:
+            config_rv = 0xF;
+            break;
+    }
+
+    return config_rv;
+}
 
 
 
@@ -97,7 +158,39 @@ uint8_t kly_gpio_pin_read(uint8_t pin)
  */
 void kly_gpio_port_config(uint8_t port, uint32_t mask, kly_gpio_config_e config, kly_gpio_pull_e pull)
 {
+    GPIO_TypeDef *GPIO;
+    uint32_t pin_config;
+    uint32_t reg_config;
+    uint32_t i;
 
+    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
+    GPIO = STM32_GPIO[port];
+
+    RCC->APB2ENR |= 1U << (port + 2);
+
+    pin_config = get_config(config, pull);
+
+    reg_config = GPIO->CRL;
+    for(i = 0; i < 8; i++)
+    {
+        if(mask & (1U << i))
+        {
+            reg_config &= ~(0xF << (i * 4));
+            reg_config |= pin_config << (i * 4);
+        }
+    }
+    GPIO->CRL = reg_config;
+
+    reg_config = GPIO->CRH;
+    for(i = 0; i < 8; i++)
+    {
+        if(mask & (1U << (i+8)))
+        {
+            reg_config &= ~(0xF << (i * 4));
+            reg_config |= pin_config << (i * 4);
+        }
+    }
+    GPIO->CRH = reg_config;
 }
 
 
@@ -111,7 +204,16 @@ void kly_gpio_port_config(uint8_t port, uint32_t mask, kly_gpio_config_e config,
  */
 void kly_gpio_port_write(uint8_t port, uint32_t mask, uint32_t level)
 {
+    GPIO_TypeDef *GPIO;
+    uint32_t odr;
 
+    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
+    GPIO = STM32_GPIO[port];
+
+    odr  = GPIO->ODR;
+    odr &= ~mask;
+    odr |= (level & mask);
+    GPIO->ODR = odr;
 }
 
 
@@ -123,7 +225,12 @@ void kly_gpio_port_write(uint8_t port, uint32_t mask, uint32_t level)
  */
 void kly_gpio_port_clear(uint8_t port, uint32_t mask)
 {
+    GPIO_TypeDef *GPIO;
 
+    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
+    GPIO = STM32_GPIO[port];
+
+    GPIO->ODR &= ~mask;
 }
 
 
@@ -135,7 +242,12 @@ void kly_gpio_port_clear(uint8_t port, uint32_t mask)
  */
 void kly_gpio_port_set(uint8_t port, uint32_t mask)
 {
+    GPIO_TypeDef *GPIO;
 
+    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
+    GPIO = STM32_GPIO[port];
+
+    GPIO->ODR |= mask;
 }
 
 
@@ -148,7 +260,12 @@ void kly_gpio_port_set(uint8_t port, uint32_t mask)
  */
 void kly_gpio_port_toggle(uint8_t port, uint32_t mask)
 {
+    GPIO_TypeDef *GPIO;
 
+    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
+    GPIO = STM32_GPIO[port];
+
+    GPIO->ODR ^= mask;
 }
 
 
@@ -162,7 +279,12 @@ void kly_gpio_port_toggle(uint8_t port, uint32_t mask)
  */
 uint32_t kly_gpio_port_read(uint8_t port, uint32_t mask)
 {
-    return 0;
+    GPIO_TypeDef *GPIO;
+
+    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
+    GPIO = STM32_GPIO[port];
+
+    return GPIO->IDR & mask;
 }
 
 
