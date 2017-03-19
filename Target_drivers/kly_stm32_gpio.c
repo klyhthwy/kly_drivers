@@ -9,26 +9,103 @@
  */
 
 
+#include <stdbool.h>
 #include "kly_error.h"
 #include "kly_gpio.h"
+#include "kly_static_mutex.h"
 #include "stm32f103xe.h"
 
 
-#define GPIO_PORT_SIZE 16
+#define GPIO_LOCK_PORT() \
+    kly_static_mutex_lock(&PORT[port].state->mutex)
+#define GPIO_UNLOCK_PORT() \
+    kly_static_mutex_unlock(&PORT[port].state->mutex)
 
 
-
-static GPIO_TypeDef * const STM32_GPIO[] =
+/**
+ * State variables of a GPIO port.
+ */
+typedef struct port_state_struct
 {
-    GPIOA,
-    GPIOB,
-    GPIOC,
-    GPIOD,
-    GPIOE,
-    GPIOF,
-    GPIOG
+    kly_static_mutex_t mutex;
+    bool initialized;
+} port_state_s;
+
+/**
+ * Port data for each GPIO port on the device.
+ */
+typedef struct port_data_struct
+{
+    port_state_s * const state;
+    GPIO_TypeDef * const GPIO;
+} port_data_s;
+
+
+// Port states for the stm32f1xx devices.
+static port_state_s state[] =
+{
+    {
+        .mutex = MUTEX_UNLOCKED,
+        .initialized = false
+    },
+    {
+        .mutex = MUTEX_UNLOCKED,
+        .initialized = false
+    },
+    {
+        .mutex = MUTEX_UNLOCKED,
+        .initialized = false
+    },
+    {
+        .mutex = MUTEX_UNLOCKED,
+        .initialized = false
+    },
+    {
+        .mutex = MUTEX_UNLOCKED,
+        .initialized = false
+    },
+    {
+        .mutex = MUTEX_UNLOCKED,
+        .initialized = false
+    },
+    {
+        .mutex = MUTEX_UNLOCKED,
+        .initialized = false
+    },
 };
 
+// Port data for each GPIO
+static const port_data_s PORT[] =
+{
+    {
+        .state = &state[0],
+        .GPIO = GPIOA
+    },
+    {
+        .state = &state[1],
+        .GPIO = GPIOB
+    },
+    {
+        .state = &state[2],
+        .GPIO = GPIOC
+    },
+    {
+        .state = &state[3],
+        .GPIO = GPIOD
+    },
+    {
+        .state = &state[4],
+        .GPIO = GPIOE
+    },
+    {
+        .state = &state[5],
+        .GPIO = GPIOF
+    },
+    {
+        .state = &state[6],
+        .GPIO = GPIOG
+    },
+};
 
 
 /**
@@ -77,74 +154,21 @@ static uint32_t get_config(kly_gpio_config_e config, kly_gpio_pull_e pull)
 
 
 /**
- * Configure a GPIO pin.
- * @param pin Pin to configure.
- * @param config Configuration.
- * @param pull Pull option.
+ * Initialize a GPIO port. Intended to perform one time initialization for ports that may change
+ * configurations throughout the application.
+ * @param port Port to initialize.
  */
-void kly_gpio_pin_config(uint8_t pin, kly_gpio_config_e config, kly_gpio_pull_e pull)
+void kly_gpio_port_initialize(uint8_t port)
 {
+    KLY_ASSERT(port < sizeof(PORT) / sizeof(PORT[0]));
 
-}
-
-
-
-/**
- * Write to the pin output register. Correct configuration is not checked
- * and it is left to the user to ensure correct pin configuration.
- * @param pin Pin to write.
- * @param level Level to write. 0 for low, 1 for high.
- */
-void kly_gpio_pin_write(uint8_t pin, uint8_t level)
-{
-
-}
-
-
-
-/**
- * Clear a GPIO pin output to bring the pin level low.
- * @param pin Pin to clear.
- */
-void kly_gpio_pin_clear(uint8_t pin)
-{
-
-}
-
-
-
-/**
- * Set a GPIO pin output to bring the pin level high.
- * @param pin Pin to set.
- */
-void kly_gpio_pin_set(uint8_t pin)
-{
-
-}
-
-
-
-/**
- * Toggle a GPIO pin output to switch the pin level from
- * high to low or low to high.
- * @param pin Pin to toggle.
- */
-void kly_gpio_pin_toggle(uint8_t pin)
-{
-
-}
-
-
-
-/**
- * Read a pin input value register. Correct configuration is not checked
- * and it is left to the user to ensure correct pin configuration.
- * @param pin Pin to read.
- * @return Pin level. 0 for low, 1 for high
- */
-uint8_t kly_gpio_pin_read(uint8_t pin)
-{
-    return 0;
+    GPIO_LOCK_PORT();
+    if(!PORT[port].state->initialized)
+    {
+        RCC->APB2ENR |= 1U << (port + 2);
+        PORT[port].state->initialized = true;
+    }
+    GPIO_UNLOCK_PORT();
 }
 
 
@@ -158,19 +182,16 @@ uint8_t kly_gpio_pin_read(uint8_t pin)
  */
 void kly_gpio_port_config(uint8_t port, uint32_t mask, kly_gpio_config_e config, kly_gpio_pull_e pull)
 {
-    GPIO_TypeDef *GPIO;
     uint32_t pin_config;
     uint32_t reg_config;
     uint32_t i;
 
-    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
-    GPIO = STM32_GPIO[port];
-
-    RCC->APB2ENR |= 1U << (port + 2);
+    KLY_ASSERT(port < sizeof(PORT) / sizeof(PORT[0]));
 
     pin_config = get_config(config, pull);
 
-    reg_config = GPIO->CRL;
+    GPIO_LOCK_PORT();
+    reg_config = PORT[port].GPIO->CRL;
     for(i = 0; i < 8; i++)
     {
         if(mask & (1U << i))
@@ -179,9 +200,9 @@ void kly_gpio_port_config(uint8_t port, uint32_t mask, kly_gpio_config_e config,
             reg_config |= pin_config << (i * 4);
         }
     }
-    GPIO->CRL = reg_config;
+    PORT[port].GPIO->CRL = reg_config;
 
-    reg_config = GPIO->CRH;
+    reg_config = PORT[port].GPIO->CRH;
     for(i = 0; i < 8; i++)
     {
         if(mask & (1U << (i+8)))
@@ -190,7 +211,8 @@ void kly_gpio_port_config(uint8_t port, uint32_t mask, kly_gpio_config_e config,
             reg_config |= pin_config << (i * 4);
         }
     }
-    GPIO->CRH = reg_config;
+    PORT[port].GPIO->CRH = reg_config;
+    GPIO_UNLOCK_PORT();
 }
 
 
@@ -204,16 +226,16 @@ void kly_gpio_port_config(uint8_t port, uint32_t mask, kly_gpio_config_e config,
  */
 void kly_gpio_port_write(uint8_t port, uint32_t mask, uint32_t level)
 {
-    GPIO_TypeDef *GPIO;
     uint32_t odr;
 
-    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
-    GPIO = STM32_GPIO[port];
+    KLY_ASSERT(port < sizeof(PORT) / sizeof(PORT[0]));
 
-    odr  = GPIO->ODR;
+    GPIO_LOCK_PORT();
+    odr  = PORT[port].GPIO->ODR;
     odr &= ~mask;
     odr |= (level & mask);
-    GPIO->ODR = odr;
+    PORT[port].GPIO->ODR = odr;
+    GPIO_UNLOCK_PORT();
 }
 
 
@@ -225,12 +247,9 @@ void kly_gpio_port_write(uint8_t port, uint32_t mask, uint32_t level)
  */
 void kly_gpio_port_clear(uint8_t port, uint32_t mask)
 {
-    GPIO_TypeDef *GPIO;
+    KLY_ASSERT(port < sizeof(PORT) / sizeof(PORT[0]));
 
-    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
-    GPIO = STM32_GPIO[port];
-
-    GPIO->ODR &= ~mask;
+    PORT[port].GPIO->BRR = mask;
 }
 
 
@@ -242,12 +261,9 @@ void kly_gpio_port_clear(uint8_t port, uint32_t mask)
  */
 void kly_gpio_port_set(uint8_t port, uint32_t mask)
 {
-    GPIO_TypeDef *GPIO;
+    KLY_ASSERT(port < sizeof(PORT) / sizeof(PORT[0]));
 
-    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
-    GPIO = STM32_GPIO[port];
-
-    GPIO->ODR |= mask;
+    PORT[port].GPIO->BSRR = mask;
 }
 
 
@@ -260,12 +276,11 @@ void kly_gpio_port_set(uint8_t port, uint32_t mask)
  */
 void kly_gpio_port_toggle(uint8_t port, uint32_t mask)
 {
-    GPIO_TypeDef *GPIO;
+    KLY_ASSERT(port < sizeof(PORT) / sizeof(PORT[0]));
 
-    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
-    GPIO = STM32_GPIO[port];
-
-    GPIO->ODR ^= mask;
+    GPIO_LOCK_PORT();
+    PORT[port].GPIO->ODR ^= mask;
+    GPIO_UNLOCK_PORT();
 }
 
 
@@ -279,12 +294,88 @@ void kly_gpio_port_toggle(uint8_t port, uint32_t mask)
  */
 uint32_t kly_gpio_port_read(uint8_t port, uint32_t mask)
 {
-    GPIO_TypeDef *GPIO;
+    KLY_ASSERT(port < sizeof(PORT) / sizeof(PORT[0]));
 
-    KLY_ASSERT(port < sizeof(STM32_GPIO) / sizeof(STM32_GPIO[0]));
-    GPIO = STM32_GPIO[port];
+    return PORT[port].GPIO->IDR & mask;
+}
 
-    return GPIO->IDR & mask;
+
+
+/**
+ * Configure a GPIO pin.
+ * @param port Port of the pin.
+ * @param pin Pin to configure.
+ * @param config Configuration.
+ * @param pull Pull option.
+ */
+void kly_gpio_pin_config(uint8_t port, uint8_t pin, kly_gpio_config_e config, kly_gpio_pull_e pull)
+{
+    kly_gpio_port_config(port, 1U << pin, config, pull);
+}
+
+
+
+/**
+ * Write to the pin output register. Correct configuration is not checked
+ * and it is left to the user to ensure correct pin configuration.
+ * @param port Port of the pin.
+ * @param pin Pin to write.
+ * @param level Level to write. 0 for low, 1 for high.
+ */
+void kly_gpio_pin_write(uint8_t port, uint8_t pin, uint8_t level)
+{
+    kly_gpio_port_write(port, 1U << pin, level);
+}
+
+
+
+/**
+ * Clear a GPIO pin output to bring the pin level low.
+ * @param port Port of the pin.
+ * @param pin Pin to clear.
+ */
+void kly_gpio_pin_clear(uint8_t port, uint8_t pin)
+{
+    kly_gpio_port_clear(port, 1U << pin);
+}
+
+
+
+/**
+ * Set a GPIO pin output to bring the pin level high.
+ * @param port Port of the pin.
+ * @param pin Pin to set.
+ */
+void kly_gpio_pin_set(uint8_t port, uint8_t pin)
+{
+    kly_gpio_port_set(port, 1U << pin);
+}
+
+
+
+/**
+ * Toggle a GPIO pin output to switch the pin level from
+ * high to low or low to high.
+ * @param port Port of the pin.
+ * @param pin Pin to toggle.
+ */
+void kly_gpio_pin_toggle(uint8_t port, uint8_t pin)
+{
+    kly_gpio_port_toggle(port, 1U << pin);
+}
+
+
+
+/**
+ * Read a pin input value register. Correct configuration is not checked
+ * and it is left to the user to ensure correct pin configuration.
+ * @param port Port of the pin to read.
+ * @param pin Pin to read.
+ * @return Pin level. 0 for low, 1 for high
+ */
+uint8_t kly_gpio_pin_read(uint8_t port, uint8_t pin)
+{
+    return kly_gpio_port_read(port, 1U << pin) >> pin;
 }
 
 

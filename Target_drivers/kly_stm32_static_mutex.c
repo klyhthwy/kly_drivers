@@ -18,7 +18,7 @@
  * @param mutex Mutex to lock.
  * @return true on success, false if already locked.
  */
-bool kly_static_mutex_lock(volatile kly_static_mutex_t *mutex)
+bool kly_static_mutex_lock(kly_static_mutex_t *mutex)
 {
     kly_static_mutex_t current_value;
     uint32_t exclusive;
@@ -37,7 +37,7 @@ bool kly_static_mutex_lock(volatile kly_static_mutex_t *mutex)
  * Unlock a static mutex variable.
  * @param mutex Mutex to unlock.
  */
-void kly_static_mutex_unlock(volatile kly_static_mutex_t *mutex)
+void kly_static_mutex_unlock(kly_static_mutex_t *mutex)
 {
-
+    *mutex = MUTEX_UNLOCKED;
 }

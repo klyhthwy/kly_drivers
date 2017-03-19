@@ -20,7 +20,7 @@
 #define MUTEX_UNLOCKED  0x0000
 
 
-typedef uint16_t kly_static_mutex_t; // Static mutex type.
+typedef volatile uint16_t kly_static_mutex_t; // Static mutex type.
 
 
 /**
@@ -28,14 +28,14 @@ typedef uint16_t kly_static_mutex_t; // Static mutex type.
  * @param mutex Mutex to lock.
  * @return true on success, false if already locked.
  */
-bool kly_static_mutex_lock(volatile kly_static_mutex_t *mutex);
+bool kly_static_mutex_lock(kly_static_mutex_t *mutex);
 
 
 /**
  * Unlock a static mutex variable.
  * @param mutex Mutex to unlock.
  */
-void kly_static_mutex_unlock(volatile kly_static_mutex_t *mutex);
+void kly_static_mutex_unlock(kly_static_mutex_t *mutex);
 
 
 #endif /* KLY_DRIVERS_INCLUDE_KLY_STATIC_MUTEX_H_ */
