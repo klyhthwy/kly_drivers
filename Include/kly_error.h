@@ -8,8 +8,8 @@
  * @details
  */
 
-#ifndef KLY_DRIVERS_APPLICATION_DRIVERS_INCLUDE_KLY_ERROR_H_
-#define KLY_DRIVERS_APPLICATION_DRIVERS_INCLUDE_KLY_ERROR_H_
+#ifndef KLY_DRIVERS_INCLUDE_KLY_ERROR_H_
+#define KLY_DRIVERS_INCLUDE_KLY_ERROR_H_
 
 #include <stdint.h>
 
@@ -53,4 +53,4 @@
 void kly_application_error_handler(const char *file, uint32_t line, const char *msg);
 
 
-#endif /* KLY_DRIVERS_APPLICATION_DRIVERS_INCLUDE_KLY_ERROR_H_ */
+#endif /* KLY_DRIVERS_INCLUDE_KLY_ERROR_H_ */
